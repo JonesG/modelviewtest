@@ -56,10 +56,12 @@
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
         <a-entity id="target" mindar-image-target="targetIndex: 0">
+          <!-- Marker flat on a table: tip +90° about X so the robot stands up on it.
+               (If you instead hold the card vertically facing you, use rotation "0 0 0".) -->
           <a-gltf-model
             src="#robot"
             play-clip="clip: Dance"
-            rotation="0 0 0"
+            rotation="90 0 0"
             position="0 0 0"
             scale="0.3 0.3 0.3">
           </a-gltf-model>
