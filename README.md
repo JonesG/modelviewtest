@@ -102,67 +102,164 @@ and one or more `Network:` URLs.
 - **Phone (same Wi-Fi):** open the **`Network:`** URL, e.g.
   `https://192.168.1.90:8443/`.
 
-### Self-signed certificate warning
+### Trusted cert via a tunnel (recommended for phones)
 
-The first visit on each device shows a "Not Secure" / certificate warning
-because the cert is self-signed. Tap **Advanced → Proceed / Visit Website**.
+The self-signed cert triggers a "Not Secure" warning on first visit, and — more
+importantly — **iOS Safari blocks geolocation on untrusted certs** (see the GPS
+note below). The clean fix is a tunnel, which gives a real, trusted HTTPS URL.
 
-To avoid the warning entirely (and get a trusted public URL for testing), run a
-tunnel to the **HTTP port `8080`** (not the TLS port):
+**cloudflared** (recommended — no account, no interstitial page). Install it
+with `winget install Cloudflare.cloudflared` (Windows) / `brew install
+cloudflared` (macOS), then, with the server running (`npm start`), in another
+terminal:
 
 ```bash
-# cloudflared
-cloudflared tunnel --url http://localhost:8080
-# or ngrok
-ngrok http 8080
+npm run tunnel        # = cloudflared tunnel --url http://localhost:8080
 ```
 
-Then open the `https://…trycloudflare.com` / `…ngrok.app` URL on your phone — no
-cert warning, real HTTPS, AR works. The tunnel terminates TLS at its edge and
-sets `X-Forwarded-Proto: https`, which the server detects and serves directly.
+It prints a `https://<random>.trycloudflare.com` URL. Open that on the phone — no
+cert warning, no click-through, real HTTPS, AR + GPS work.
 
-> **`ERR_NGROK_3004`** means ngrok was pointed at the **HTTPS** port
-> (`ngrok http 8443`): ngrok speaks plain HTTP to the upstream, but `8443` only
-> speaks TLS, so it sees an "invalid HTTP response". Use `ngrok http 8080`.
+Always point the tunnel at the **HTTP port `8080`**, not the TLS port `8443`. The
+tunnel terminates TLS at its edge and forwards plain HTTP with
+`X-Forwarded-Proto: https`, which the server detects and serves directly.
+
+> The `…trycloudflare.com` URL is **ephemeral** — a new random URL each run. For
+> a **stable** URL that survives restarts, set up a named tunnel ↓.
+
+#### Permanent URL (named tunnel on your own domain)
+
+A quick tunnel (above) is throwaway. A *named* tunnel gives a fixed hostname like
+`https://ar.example.com`. Requires a domain on a free Cloudflare account.
+
+```bash
+# 1. authorize cloudflared with your Cloudflare account (opens a browser; pick the zone)
+cloudflared tunnel login
+
+# 2. create a tunnel (writes a <UUID>.json credentials file under ~/.cloudflared)
+cloudflared tunnel create ar
+
+# 3. point a hostname at it (creates the DNS record for you)
+cloudflared tunnel route dns ar ar.example.com
+```
+
+Then create `~/.cloudflared/config.yml`:
+
+```yaml
+tunnel: ar
+credentials-file: /absolute/path/to/<UUID>.json
+ingress:
+  - hostname: ar.example.com
+    service: http://localhost:8080   # the server's HTTP port
+  - service: http_status:404
+```
+
+Run it (and leave `npm start` running):
+
+```bash
+cloudflared tunnel run ar
+```
+
+`https://ar.example.com` now always reaches your server — same trusted-cert
+benefit, but a stable URL you can bookmark on the phone.
+
+<details><summary>Alternative: ngrok</summary>
+
+```bash
+ngrok http 8080        # needs a free account / authtoken; shows a one-time interstitial
+```
+
+`ERR_NGROK_3004` means ngrok was pointed at the HTTPS port (`ngrok http 8443`):
+ngrok speaks plain HTTP to the upstream but `8443` only speaks TLS. Use `8080`.
+
+</details>
 
 ### Testing AR
 
-- **Android:** open in Chrome → tap **View in your space** (Scene Viewer / WebXR).
-- **iPhone / iPad:** open in Safari → tap **View in your space** or the Toy
-  Drummer image → AR Quick Look opens. The drummer animates.
+- **Android:** open in Chrome → tap **View in AR** (Scene Viewer / WebXR).
+- **iPhone / iPad:** open in Safari → tap **View in AR** → AR Quick Look opens
+  and the model animates (the GLB is converted to an animated USDZ in-browser).
 
-## Adding your own model
+## Geopositioning & database
+
+Models are stored in a database with a real-world location, and the page lists
+the ones **near the device**, sorted by distance, with bearing. On a **phone**
+(iOS or Android) selecting a model goes **straight to AR**; on desktop it loads
+inline (the **View in AR** button stays as a fallback if a browser blocks the
+auto-launch). New placements are created via an **explicit, optional form**
+("＋ Create model"), not an automatic drop.
+
+> Scope: this is **location-aware selection** (GPS → which models to show).
+> True world-anchored AR (a model pinned to exact coordinates as you walk) is not
+> supported by iOS AR Quick Look or standard WebXR, so it's out of scope.
+
+> **iOS + GPS needs a _trusted_ certificate.** Safari/WebKit blocks
+> `navigator.geolocation` on a self-signed cert (the LAN `https://<ip>:8443`
+> URL) even after you tap through the warning — location comes back empty. Use a
+> tunnel for a real cert (`cloudflared tunnel --url http://localhost:8080`, then
+> open the `…trycloudflare.com` URL), or trust the cert on the device. Also
+> ensure **Settings ▸ Privacy ▸ Location Services** is on and Safari is allowed
+> to use Location. (Android/Chrome behaves the same way with untrusted certs.)
+
+### Database adapter (SQLite or Postgres)
+
+Selected at runtime via `DB_DRIVER`; both implement the same
+[`ModelStore`](src/db/types.ts) interface ([`geo.ts`](src/db/geo.ts) does the
+haversine distance + bearing):
+
+```bash
+# SQLite (default) — built-in node:sqlite, no native deps, file at ./data/models.db
+npm start
+
+# Postgres — needs a running server
+DB_DRIVER=postgres DATABASE_URL=postgres://user:pass@localhost:5432/ar npm start
+```
+
+On first run the DB is seeded with a few sample placements (NYC / Paris / Sydney)
+so the list isn't empty.
+
+### HTTP API
+
+| Method & path | Purpose |
+| --- | --- |
+| `GET /api/models` | all models |
+| `GET /api/models/nearby?lat=&lon=&radius=` | models within `radius` m, nearest-first, each with `distanceM` + `bearingDeg` |
+| `GET /api/models/:id` | one model |
+| `POST /api/models` | place a model (`{name, filePath, lat, lon, clip?, scaleM?, …}`) |
+
+### Adding / placing your own model
 
 1. Drop `YourModel.glb` into `public/models/`.
-2. Add an entry to the `MODELS` array in
-   [`src/client/main.ts`](src/client/main.ts) with `src: 'models/YourModel.glb'`.
-3. For **animated AR on iOS**, also produce an animated `YourModel.usdz` and set
-   `iosSrc: 'models/YourModel.usdz'`.
+2. Add it to the **Model** dropdown in the create form
+   ([`public/index.html`](public/index.html)), then place it via **＋ Create
+   model** in the UI — or `POST /api/models` with
+   `filePath: "models/YourModel.glb"` and `lat`/`lon`.
+
+The runtime converter produces the iOS USDZ automatically (transform + skinned
+animation). If you'd rather pre-bake a static `.usdz` instead:
 
 ### Producing an animated USDZ
 
 There is no reliable pure-JavaScript glTF→animated-USDZ converter (three.js /
 model-viewer's own exporter drops animation). Use one of:
 
-- **Reality Converter** (free, macOS) — drag in a `.glb`, export `.usdz`.
-- **Apple `usdzconvert`** (part of Apple's USD tools, macOS).
-- **Blender** — import glTF, export USDZ (skeletal animation supported in
-  recent versions).
-- Or use a known-animated `.usdz` such as Apple's
-  [Quick Look gallery](https://developer.apple.com/augmented-reality/quick-look/)
-  models (the Toy Drummer in this project comes from there).
-
-Place the resulting `.usdz` in `public/models/` and reference it with `ios-src`.
+- The built-in converter (`npm run usdz -- in.glb out.usdz`) for transform +
+  skinned animation.
+- **Reality Converter** / **Blender** / Apple `usdzconvert` (macOS) for anything
+  it doesn't cover (e.g. morph targets).
 
 ## Layout
 
 ```
-server.ts              HTTPS static server + cert generation + MIME types (run with: node server.ts)
-src/client/main.ts     Builds the <model-viewer> gallery (bundled to public/main.js)
+server.ts              HTTPS static server + MIME types + geo REST API (run with: node server.ts)
+src/db/                Storage adapter: types.ts, geo.ts, sqlite.ts, postgres.ts, index.ts (factory + seed)
+src/lib/               Pure-TS GLB→USDZ converter (gltf.ts, zip.ts, usdz.ts)
+src/client/main.ts     Geolocation + nearby list + viewer (bundled to public/main.js)
 public/index.html      Page shell; loads the self-hosted model-viewer bundle
 public/styles.css
 public/vendor/model-viewer.min.js   Self-hosted model-viewer (works offline)
-public/models/         .glb / .usdz assets + drummer poster
+public/models/         .glb assets
+tools/build-usdz.ts    CLI: bake + validate a .usdz from a .glb
 .claude/launch.json    Preview/dev launch config (port 8080)
 ```
 
@@ -172,3 +269,6 @@ public/models/         .glb / .usdz assets + drummer poster
 | --- | --- | --- |
 | `HTTPS_PORT` | `8443` | HTTPS listener |
 | `HTTP_PORT` | `8080` | HTTP listener (serves localhost, redirects LAN hosts to HTTPS) |
+| `DB_DRIVER` | `sqlite` | `sqlite` or `postgres` |
+| `SQLITE_PATH` | `./data/models.db` | SQLite file (when `DB_DRIVER=sqlite`) |
+| `DATABASE_URL` | — | Postgres connection string (required when `DB_DRIVER=postgres`) |

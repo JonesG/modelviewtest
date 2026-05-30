@@ -19,6 +19,8 @@ import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import selfsigned from 'selfsigned';
+import { createStore, seedIfEmpty } from './src/db/index.ts';
+import type { NewModel } from './src/db/types.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -73,6 +75,84 @@ function ensureCert(): { key: string | Buffer; cert: string | Buffer } {
 
 // --- Express app: static files with AR-correct headers ---
 const app = express();
+app.use(express.json());
+
+// --- Geopositioned model database (SQLite or Postgres via adapter) ---
+const store = await createStore();
+const seeded = await seedIfEmpty(store);
+
+const num = (v: unknown): number | null => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+// Log API calls so we can see requests arriving from the phone.
+app.use('/api', (req, _res, next) => {
+  console.log(`[api] ${new Date().toISOString()} ${req.method} ${req.url}`);
+  next();
+});
+
+// All models.
+app.get('/api/models', async (_req, res) => {
+  res.json(await store.all());
+});
+
+// Models near a point, sorted nearest-first, each with distanceM + bearingDeg.
+//   /api/models/nearby?lat=..&lon=..&radius=metres
+app.get('/api/models/nearby', async (req, res) => {
+  const lat = num(req.query.lat);
+  const lon = num(req.query.lon);
+  const radius = num(req.query.radius) ?? 50_000;
+  if (lat === null || lon === null) {
+    res.status(400).json({ error: 'lat and lon query params are required' });
+    return;
+  }
+  res.json(await store.listNearby(lat, lon, radius));
+});
+
+app.get('/api/models/:id', async (req, res) => {
+  const id = num(req.params.id);
+  const m = id === null ? null : await store.getById(id);
+  if (!m) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  res.json(m);
+});
+
+// Place a model at a location (used by the "Place here" button).
+app.post('/api/models', async (req, res) => {
+  const b = req.body ?? {};
+  const lat = num(b.lat);
+  const lon = num(b.lon);
+  if (lat === null || lon === null || !b.name || !b.filePath) {
+    res.status(400).json({ error: 'name, filePath, lat and lon are required' });
+    return;
+  }
+  const model: NewModel = {
+    name: String(b.name),
+    filePath: String(b.filePath),
+    clip: b.clip != null ? String(b.clip) : null,
+    lat,
+    lon,
+    altitude: num(b.altitude),
+    heading: num(b.heading),
+    scaleM: num(b.scaleM),
+    description: b.description != null ? String(b.description) : null,
+  };
+  res.status(201).json(await store.insert(model));
+});
+
+// Delete a placed model.
+app.delete('/api/models/:id', async (req, res) => {
+  const id = num(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: 'bad id' });
+    return;
+  }
+  const removed = await store.delete(id);
+  res.status(removed ? 204 : 404).end();
+});
 
 const MIME: Record<string, string> = {
   '.glb': 'model/gltf-binary',
@@ -94,6 +174,11 @@ app.use(
       if (MIME[ext]) res.setHeader('Content-Type', MIME[ext]);
       // Allow assets to be loaded cross-origin too. Harmless for a local demo.
       res.setHeader('Access-Control-Allow-Origin', '*');
+      // Never cache the app shell / code, so phones always get the latest build
+      // (models/*.glb can still be cached — they're immutable assets).
+      if (ext === '.html' || ext === '.js' || ext === '.css') {
+        res.setHeader('Cache-Control', 'no-store');
+      }
     },
   })
 );
@@ -107,6 +192,7 @@ https.createServer({ key, cert }, app).listen(HTTPS_PORT, '0.0.0.0', () => {
   const lines = [
     '',
     'model-viewer AR server running (HTTPS).',
+    `  Database: ${store.driver}` + (seeded ? ` (seeded ${seeded} sample models)` : ''),
     '',
     '  Local:    https://localhost:' + HTTPS_PORT + '/',
   ];

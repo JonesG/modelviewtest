@@ -6,10 +6,44 @@
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
     />
-    <title>AR model</title>
+    <title>AR models here</title>
     <link rel="stylesheet" href="/styles.css" />
     <script type="module" src="/vendor/model-viewer.min.js"></script>
     <script type="module" src="/main.js"></script>
   </head>
-  <body></body>
+  <body>
+    <div id="app">
+      <div id="create-backdrop" hidden></div>
+      <div id="viewer"></div>
+
+      <header id="bar">
+        <div id="status" class="status">Locating…</div>
+        <div class="bar-actions">
+          <button id="cycle" type="button" hidden></button>
+          <button id="del" type="button" title="Delete this model" hidden>✕</button>
+          <button id="refresh" type="button" title="Refresh location">↻</button>
+          <button id="create-toggle" type="button">＋ Create here</button>
+        </div>
+      </header>
+
+      <!-- Optional, explicit creation of a model at your current GPS location. -->
+      <form id="create-form" hidden>
+        <div class="row"><label>Name</label><input id="c-name" value="My robot" /></div>
+        <div class="row"><label>Model</label>
+          <select id="c-file"><option value="models/RobotExpressive.glb">RobotExpressive</option></select>
+        </div>
+        <div class="row"><label>Clip</label>
+          <select id="c-clip">
+            <option>Idle</option><option selected>Dance</option><option>Wave</option>
+            <option>Walking</option><option>Running</option><option>Jump</option>
+            <option>ThumbsUp</option><option>Yes</option><option>No</option><option>Punch</option>
+          </select>
+        </div>
+        <div class="row"><label>Size (m)</label><input id="c-scale" type="number" min="0.05" step="0.1" value="0.6" /></div>
+        <div class="row"><label>Location</label><span id="c-loc" class="loc">—</span><button type="button" id="c-locate" title="Use current GPS location">📍</button></div>
+        <div class="row buttons"><button type="button" id="c-create">Create here</button><button type="button" id="c-cancel">Cancel</button></div>
+        <div id="c-msg" class="cmsg"></div>
+      </form>
+    </div>
+  </body>
 </html>
