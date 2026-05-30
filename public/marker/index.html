@@ -10,7 +10,12 @@
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
-      html, body { margin: 0; height: 100%; background: #000; color: #e7ecf2;
+      /* MindAR appends the camera <video> at z-index:-2, so the page background
+         must be transparent — a body background paints over a negative-z element
+         (this was the "black camera"). Put the dark color on <html> only, which
+         is painted further back than the video. */
+      html { background: #000; }
+      html, body { margin: 0; height: 100%; color: #e7ecf2;
         font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; overflow: hidden; }
       /* MindAR needs the scene `embedded` inside a full-size container. */
       #ar-container { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; }
