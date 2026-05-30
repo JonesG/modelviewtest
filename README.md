@@ -225,7 +225,9 @@ so the list isn't empty.
 | `GET /api/models` | all models |
 | `GET /api/models/nearby?lat=&lon=&radius=` | models within `radius` m, nearest-first, each with `distanceM` + `bearingDeg` |
 | `GET /api/models/:id` | one model |
-| `POST /api/models` | place a model (`{name, filePath, lat, lon, clip?, scaleM?, …}`) |
+| `POST /api/models` | place a model (`{name, filePath, lat, lon, clip?, scaleM?, markerSrc?, targetIndex?}`) |
+| `PATCH /api/models/:id` | update fields (e.g. bind a marker: `{markerSrc, targetIndex, clip?}`) |
+| `DELETE /api/models/:id` | remove a model |
 
 ### Adding / placing your own model
 
@@ -247,6 +249,37 @@ model-viewer's own exporter drops animation). Use one of:
   skinned animation.
 - **Reality Converter** / **Blender** / Apple `usdzconvert` (macOS) for anything
   it doesn't cover (e.g. morph targets).
+
+## Marker (image-target) AR
+
+`/marker/` is a marker-based AR page using **MindAR** (MIT, no account/key,
+runs in iOS Safari). Unlike GPS placement, a model is anchored to a **printed
+image marker** and appears with **no manual placement**.
+
+Each DB model can be **bound to a marker** via two fields:
+- `markerSrc` — a compiled MindAR `.mind` file (e.g. `/marker/targets.mind`).
+- `targetIndex` — which image within that file (0-based).
+
+The page reads `/api/models`, takes the models bound to one `.mind` file
+(`?src=` or the first bound model's file), and renders each on its
+`targetIndex`. MindAR tracks multiple images from one file, so point the camera
+at any registered marker and its model appears.
+
+**Set up your markers:**
+1. Compile your marker image(s) into a `.mind` at the
+   [MindAR compiler](https://hiukim.github.io/mind-ar-js-doc/tools/compile)
+   (the order you add them = `targetIndex`). Drop the file in `public/marker/`.
+2. Bind models: create with `markerSrc`/`targetIndex` (the create form has
+   **Marker** + **Target #** inputs), or
+   `PATCH /api/models/:id {"markerSrc":"/marker/targets.mind","targetIndex":0}`.
+3. Open `/marker/` and point at a marker.
+
+A bundled example target (`public/marker/card.{mind,png}`) works out of the box —
+bind a model to `/marker/card.mind` / index `0` and display/print `card.png`.
+
+> Scope: this is **image-marker** anchoring (model appears on the marker), not
+> GPS/world anchoring. Marker model scale/rotation default to a flat-marker
+> upright pose; tune in [`public/marker/index.html`](public/marker/index.html).
 
 ## Layout
 

@@ -41,6 +41,8 @@ const fName = $<HTMLInputElement>('c-name');
 const fFile = $<HTMLSelectElement>('c-file');
 const fClip = $<HTMLSelectElement>('c-clip');
 const fScale = $<HTMLInputElement>('c-scale');
+const fMarker = $<HTMLInputElement>('c-marker');
+const fTarget = $<HTMLInputElement>('c-target');
 const fLoc = $('c-loc');
 const fLocate = $<HTMLButtonElement>('c-locate');
 const fCreate = $<HTMLButtonElement>('c-create');
@@ -227,6 +229,8 @@ async function createModel(): Promise<void> {
     lat: formPos.lat,
     lon: formPos.lon,
     description: 'Created from the browser',
+    markerSrc: fMarker.value.trim() || null,
+    targetIndex: fTarget.value.trim() === '' ? null : Number(fTarget.value),
   };
   fCreate.disabled = true;
   fMsg.textContent = 'Creating…';
