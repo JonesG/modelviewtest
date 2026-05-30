@@ -1,0 +1,28 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #0e1116;
+  overflow: hidden;
+}
+
+model-viewer {
+  width: 100vw;
+  height: 100vh;
+  --poster-color: transparent;
+}
+
+.ar-button {
+  position: absolute;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 22px;
+  border: none;
+  border-radius: 999px;
+  background: #4f8cff;
+  color: #fff;
+  font: 600 15px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}

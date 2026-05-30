@@ -1,0 +1,4 @@
+node_modules/
+certs/
+public/main.js
+*.log
