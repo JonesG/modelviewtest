@@ -85,16 +85,20 @@
         scene.setAttribute('device-orientation-permission-ui', 'enabled: false');
 
         const assets = document.createElement('a-assets');
+        // filePath is stored relative (e.g. "models/x.glb"); make it absolute so it
+        // resolves from the site root, not from /marker/ (which would 404 and hang).
+        const abs = (p) => (/^(https?:)?\//.test(p) ? p : '/' + p.replace(/^\.?\//, ''));
         const assetIdByFile = new Map();
         const ensureAsset = (filePath) => {
-          if (!assetIdByFile.has(filePath)) {
+          const url = abs(filePath);
+          if (!assetIdByFile.has(url)) {
             const id = 'glb-' + assetIdByFile.size;
             const item = document.createElement('a-asset-item');
-            item.id = id; item.setAttribute('src', filePath);
+            item.id = id; item.setAttribute('src', url);
             assets.appendChild(item);
-            assetIdByFile.set(filePath, id);
+            assetIdByFile.set(url, id);
           }
-          return assetIdByFile.get(filePath);
+          return assetIdByFile.get(url);
         };
 
         const cam = document.createElement('a-camera');
