@@ -14,6 +14,10 @@ export type NewModel = {
   /** Target real-world size in meters for AR (largest dimension). */
   scaleM?: number | null;
   description?: string | null;
+  /** Compiled MindAR image-target file this model is bound to (e.g. "/marker/targets.mind"). */
+  markerSrc?: string | null;
+  /** Which image within that .mind file (0-based) triggers this model. */
+  targetIndex?: number | null;
 };
 
 export type ModelRecord = NewModel & {
@@ -37,6 +41,8 @@ export interface ModelStore {
   listNearby(lat: number, lon: number, radiusM: number): Promise<NearbyModel[]>;
   /** Delete a model by id; resolves true if a row was removed. */
   delete(id: number): Promise<boolean>;
+  /** Update a subset of fields on a model; resolves the updated record (or null). */
+  update(id: number, fields: Partial<NewModel>): Promise<ModelRecord | null>;
   count(): Promise<number>;
   close(): Promise<void>;
 }

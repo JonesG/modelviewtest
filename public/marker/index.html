@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>Marker AR (MindAR)</title>
+
+    <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
+    <style>
+      /* MindAR appends the camera <video> at z-index:-2, so the page background
+         must be transparent (a body background would paint over it). Dark color
+         goes on <html>, which is painted further back than the video. */
+      html { background: #000; }
+      html, body { margin: 0; height: 100%; color: #e7ecf2;
+        font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; overflow: hidden; }
+      #ar-container { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; }
+      #hint { position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+        display: flex; align-items: center; gap: 10px; justify-content: center;
+        padding: max(10px, env(safe-area-inset-top)) 12px 10px;
+        background: linear-gradient(to bottom, rgba(0,0,0,.65), rgba(0,0,0,0));
+        pointer-events: none; font-size: 13px; text-shadow: 0 1px 3px #000; }
+      #hint img { width: 46px; height: auto; border-radius: 6px; border: 1px solid #fff6; }
+      #hint a { color: #9fc0ff; pointer-events: auto; }
+      #msg { position: fixed; bottom: 16px; left: 0; right: 0; text-align: center; z-index: 10;
+        color: #ffd27a; font-size: 13px; text-shadow: 0 1px 3px #000; padding: 0 16px; }
+    </style>
+  </head>
+  <body>
+    <div id="hint"></div>
+    <div id="msg"></div>
+    <div id="ar-container"></div>
+
+    <script>
+      // Play a named glTF animation clip (no aframe-extras needed).
+      AFRAME.registerComponent('play-clip', {
+        schema: { clip: { default: '' } },
+        init() {
+          this.el.addEventListener('model-loaded', () => {
+            const mesh = this.el.getObject3D('mesh');
+            const clips = mesh && mesh.animations;
+            if (!clips || !clips.length) return;
+            this.mixer = new AFRAME.THREE.AnimationMixer(mesh);
+            const clip = this.data.clip
+              ? AFRAME.THREE.AnimationClip.findByName(clips, this.data.clip) || clips[0]
+              : clips[0];
+            this.mixer.clipAction(clip).play();
+          });
+        },
+        tick(_t, dt) { if (this.mixer) this.mixer.update(dt / 1000); },
+      });
+
+      const msg = document.getElementById('msg');
+      const hint = document.getElementById('hint');
+
+      (async () => {
+        let models = [];
+        try { models = await (await fetch('/api/models')).json(); }
+        catch (e) { msg.textContent = 'Could not load models: ' + e.message; return; }
+
+        const marked = models.filter((m) => m.markerSrc);
+        if (!marked.length) {
+          msg.textContent = 'No models are bound to a marker yet. In the app, set a model’s “Marker” (.mind) + “Target #”, or PATCH /api/models/:id.';
+          return;
+        }
+
+        // One MindAR scene tracks one .mind file. Use ?src= or the first bound model's file.
+        const src = new URLSearchParams(location.search).get('src') || marked[0].markerSrc;
+        const here = marked.filter((m) => m.markerSrc === src);
+        const others = marked.length - here.length;
+
+        // Hint (show the example image when using the bundled card target).
+        hint.innerHTML = src.includes('card.mind')
+          ? '<img src="/marker/card.png" alt="target"><span>Point at this image — <a href="/marker/card.png" target="_blank">full size</a></span>'
+          : '<span>Point the camera at a registered marker.</span>';
+
+        // Build the A-Frame + MindAR scene from the bound models.
+        const scene = document.createElement('a-scene');
+        scene.setAttribute('mindar-image', `imageTargetSrc: ${src}; uiScanning: yes; uiLoading: no; uiError: no`);
+        scene.setAttribute('embedded', '');
+        scene.setAttribute('color-space', 'sRGB');
+        scene.setAttribute('renderer', 'colorManagement: true, physicallyCorrectLights');
+        scene.setAttribute('vr-mode-ui', 'enabled: false');
+        scene.setAttribute('device-orientation-permission-ui', 'enabled: false');
+
+        const assets = document.createElement('a-assets');
+        // filePath is stored relative (e.g. "models/x.glb"); make it absolute so it
+        // resolves from the site root, not from /marker/ (which would 404 and hang).
+        const abs = (p) => (/^(https?:)?\//.test(p) ? p : '/' + p.replace(/^\.?\//, ''));
+        const assetIdByFile = new Map();
+        const ensureAsset = (filePath) => {
+          const url = abs(filePath);
+          if (!assetIdByFile.has(url)) {
+            const id = 'glb-' + assetIdByFile.size;
+            const item = document.createElement('a-asset-item');
+            item.id = id; item.setAttribute('src', url);
+            assets.appendChild(item);
+            assetIdByFile.set(url, id);
+          }
+          return assetIdByFile.get(url);
+        };
+
+        const cam = document.createElement('a-camera');
+        cam.setAttribute('position', '0 0 0');
+        cam.setAttribute('look-controls', 'enabled: false');
+
+        scene.appendChild(assets);
+        scene.appendChild(cam);
+
+        for (const m of here) {
+          const assetId = ensureAsset(m.filePath);
+          const target = document.createElement('a-entity');
+          target.setAttribute('mindar-image-target', `targetIndex: ${m.targetIndex || 0}`);
+          const model = document.createElement('a-gltf-model');
+          model.setAttribute('src', '#' + assetId);
+          if (m.clip) model.setAttribute('play-clip', `clip: ${m.clip}`);
+          model.setAttribute('rotation', '90 0 0');  // upright on a flat marker
+          model.setAttribute('position', '0 0 0');
+          model.setAttribute('scale', '0.3 0.3 0.3');
+          target.appendChild(model);
+          scene.appendChild(target);
+        }
+
+        document.getElementById('ar-container').appendChild(scene);
+
+        const keepTransparent = () => { try { scene.renderer.setClearAlpha(0); } catch (e) {} };
+        scene.addEventListener('render-target-loaded', keepTransparent);
+        scene.addEventListener('arReady', () => { keepTransparent(); if (others) msg.textContent = `${others} model(s) use a different marker file — open /marker/?src=… to view them.`; });
+        scene.addEventListener('arError', () => {
+          msg.textContent = 'Camera/AR failed to start — check camera permission and that you are on the https URL.';
+        });
+      })();
+    </script>
+  </body>
+</html>

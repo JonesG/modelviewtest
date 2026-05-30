@@ -139,8 +139,32 @@ app.post('/api/models', async (req, res) => {
     heading: num(b.heading),
     scaleM: num(b.scaleM),
     description: b.description != null ? String(b.description) : null,
+    markerSrc: b.markerSrc != null && b.markerSrc !== '' ? String(b.markerSrc) : null,
+    targetIndex: num(b.targetIndex),
   };
   res.status(201).json(await store.insert(model));
+});
+
+// Update fields on a model (e.g. bind it to a marker: markerSrc + targetIndex).
+app.patch('/api/models/:id', async (req, res) => {
+  const id = num(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: 'bad id' });
+    return;
+  }
+  const b = req.body ?? {};
+  const fields: Partial<NewModel> = {};
+  if ('name' in b) fields.name = String(b.name);
+  if ('clip' in b) fields.clip = b.clip != null && b.clip !== '' ? String(b.clip) : null;
+  if ('scaleM' in b) fields.scaleM = num(b.scaleM);
+  if ('markerSrc' in b) fields.markerSrc = b.markerSrc != null && b.markerSrc !== '' ? String(b.markerSrc) : null;
+  if ('targetIndex' in b) fields.targetIndex = num(b.targetIndex);
+  const updated = await store.update(id, fields);
+  if (!updated) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  res.json(updated);
 });
 
 // Delete a placed model.
@@ -161,6 +185,7 @@ const MIME: Record<string, string> = {
   '.bin': 'application/octet-stream',
   '.hdr': 'application/octet-stream',
   '.wasm': 'application/wasm',
+  '.mind': 'application/octet-stream', // MindAR compiled image-target file
 };
 
 app.use(
