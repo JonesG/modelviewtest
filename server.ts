@@ -161,6 +161,7 @@ const MIME: Record<string, string> = {
   '.bin': 'application/octet-stream',
   '.hdr': 'application/octet-stream',
   '.wasm': 'application/wasm',
+  '.mind': 'application/octet-stream', // MindAR compiled image-target file
 };
 
 app.use(

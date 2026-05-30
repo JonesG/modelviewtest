@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>Marker AR (MindAR)</title>
+
+    <!-- A-Frame, then MindAR's A-Frame build (order matters). CDN. -->
+    <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
+    <style>
+      html, body { margin: 0; height: 100%; background: #000; color: #e7ecf2;
+        font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; overflow: hidden; }
+      /* Intro overlay: explains the marker + a user gesture to start the camera */
+      #intro {
+        position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 16px; text-align: center;
+        padding: 24px; background: #0e1116;
+      }
+      #intro img { width: 150px; border-radius: 10px; border: 1px solid #2a3340; }
+      #intro p { max-width: 30ch; color: #9aa7b6; margin: 0; }
+      #start {
+        padding: 13px 24px; border: none; border-radius: 999px; background: #4f8cff;
+        color: #fff; font: 600 16px system-ui, sans-serif; cursor: pointer;
+      }
+      a { color: #4f8cff; }
+      #err { color: #ff7a7a; font-size: 13px; min-height: 1em; }
+    </style>
+  </head>
+  <body>
+    <!-- Tap-to-start overlay (camera needs a user gesture; also lets us show the target) -->
+    <div id="intro">
+      <strong>Marker AR</strong>
+      <p>Point the camera at <b>this image</b> (print it or show it on another screen) and the animated robot appears anchored to it — no manual placement.</p>
+      <img src="/marker/card.png" alt="target image" />
+      <a href="/marker/card.png" target="_blank">open target image full-size</a>
+      <button id="start">Start camera</button>
+      <div id="err"></div>
+    </div>
+
+    <a-scene
+      mindar-image="imageTargetSrc: /marker/card.mind; autoStart: false; uiScanning: yes; uiLoading: no; uiError: no"
+      color-space="sRGB"
+      renderer="colorManagement: true; physicallyCorrectLights: true"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: false">
+      <a-assets>
+        <a-asset-item id="robot" src="/models/RobotExpressive.glb"></a-asset-item>
+      </a-assets>
+
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+      <!-- Content anchored to target #0. Tune scale/rotation/position on-device. -->
+      <a-entity mindar-image-target="targetIndex: 0">
+        <a-gltf-model
+          src="#robot"
+          play-clip="clip: Dance"
+          rotation="-90 0 0"
+          position="0 0 0.05"
+          scale="0.4 0.4 0.4">
+        </a-gltf-model>
+      </a-entity>
+    </a-scene>
+
+    <script>
+      // Play a named glTF animation clip (avoids pulling in aframe-extras).
+      AFRAME.registerComponent('play-clip', {
+        schema: { clip: { default: '' } },
+        init() {
+          this.el.addEventListener('model-loaded', () => {
+            const mesh = this.el.getObject3D('mesh');
+            const clips = mesh && mesh.animations;
+            if (!clips || !clips.length) return;
+            this.mixer = new AFRAME.THREE.AnimationMixer(mesh);
+            const clip = this.data.clip
+              ? AFRAME.THREE.AnimationClip.findByName(clips, this.data.clip) || clips[0]
+              : clips[0];
+            this.mixer.clipAction(clip).play();
+          });
+        },
+        tick(_t, dt) { if (this.mixer) this.mixer.update(dt / 1000); },
+      });
+
+      // Start MindAR (and the camera) only on a user gesture.
+      const sceneEl = document.querySelector('a-scene');
+      const startBtn = document.getElementById('start');
+      const intro = document.getElementById('intro');
+      const err = document.getElementById('err');
+
+      const begin = async () => {
+        startBtn.disabled = true;
+        try {
+          const sys = sceneEl.systems['mindar-image-system'];
+          if (!sys) throw new Error('MindAR not loaded');
+          await sys.start();           // requests camera, begins tracking
+          intro.style.display = 'none';
+        } catch (e) {
+          startBtn.disabled = false;
+          err.textContent = 'Could not start camera: ' + (e && e.message ? e.message : e);
+        }
+      };
+
+      if (sceneEl.hasLoaded) startBtn.addEventListener('click', begin);
+      else sceneEl.addEventListener('loaded', () => startBtn.addEventListener('click', begin));
+    </script>
+  </body>
+</html>
