@@ -12,7 +12,10 @@
     <style>
       html, body { margin: 0; height: 100%; background: #000; color: #e7ecf2;
         font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; overflow: hidden; }
-      /* Intro overlay: explains the marker + a user gesture to start the camera */
+      /* MindAR needs the scene `embedded` inside a full-size container, otherwise
+         A-Frame goes fullscreen and its canvas hides the camera video feed. */
+      #ar-container { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; }
+
       #intro {
         position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column;
         align-items: center; justify-content: center; gap: 16px; text-align: center;
@@ -20,16 +23,13 @@
       }
       #intro img { width: 150px; border-radius: 10px; border: 1px solid #2a3340; }
       #intro p { max-width: 30ch; color: #9aa7b6; margin: 0; }
-      #start {
-        padding: 13px 24px; border: none; border-radius: 999px; background: #4f8cff;
-        color: #fff; font: 600 16px system-ui, sans-serif; cursor: pointer;
-      }
+      #start { padding: 13px 24px; border: none; border-radius: 999px; background: #4f8cff;
+        color: #fff; font: 600 16px system-ui, sans-serif; cursor: pointer; }
       a { color: #4f8cff; }
       #err { color: #ff7a7a; font-size: 13px; min-height: 1em; }
     </style>
   </head>
   <body>
-    <!-- Tap-to-start overlay (camera needs a user gesture; also lets us show the target) -->
     <div id="intro">
       <strong>Marker AR</strong>
       <p>Point the camera at <b>this image</b> (print it or show it on another screen) and the animated robot appears anchored to it — no manual placement.</p>
@@ -39,29 +39,32 @@
       <div id="err"></div>
     </div>
 
-    <a-scene
-      mindar-image="imageTargetSrc: /marker/card.mind; autoStart: false; uiScanning: yes; uiLoading: no; uiError: no"
-      color-space="sRGB"
-      renderer="colorManagement: true; physicallyCorrectLights: true"
-      vr-mode-ui="enabled: false"
-      device-orientation-permission-ui="enabled: false">
-      <a-assets>
-        <a-asset-item id="robot" src="/models/RobotExpressive.glb"></a-asset-item>
-      </a-assets>
+    <div id="ar-container">
+      <a-scene
+        mindar-image="imageTargetSrc: /marker/card.mind; autoStart: false; uiScanning: yes; uiLoading: no; uiError: no"
+        embedded
+        color-space="sRGB"
+        renderer="colorManagement: true, physicallyCorrectLights"
+        vr-mode-ui="enabled: false"
+        device-orientation-permission-ui="enabled: false">
+        <a-assets>
+          <a-asset-item id="robot" src="/models/RobotExpressive.glb"></a-asset-item>
+        </a-assets>
 
-      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-      <!-- Content anchored to target #0. Tune scale/rotation/position on-device. -->
-      <a-entity mindar-image-target="targetIndex: 0">
-        <a-gltf-model
-          src="#robot"
-          play-clip="clip: Dance"
-          rotation="-90 0 0"
-          position="0 0 0.05"
-          scale="0.4 0.4 0.4">
-        </a-gltf-model>
-      </a-entity>
-    </a-scene>
+        <!-- Anchored to target #0. rotation 0 0 0 = upright on the marker. -->
+        <a-entity mindar-image-target="targetIndex: 0">
+          <a-gltf-model
+            src="#robot"
+            play-clip="clip: Dance"
+            rotation="0 0 0"
+            position="0 0 0"
+            scale="0.3 0.3 0.3">
+          </a-gltf-model>
+        </a-entity>
+      </a-scene>
+    </div>
 
     <script>
       // Play a named glTF animation clip (avoids pulling in aframe-extras).
